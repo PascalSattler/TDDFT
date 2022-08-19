@@ -74,25 +74,10 @@ class WaveFunction:
             ax['right'].plot(x, psi[i].imag)
             ax['bottom'].plot(x, rho)
             
-            '''
-            plt.subplot(1,2,1)
-            plt.title("Real part")
-            plt.xlabel("x")
-            plt.ylabel("Re(Psi)")
-            plt.grid(True)
-            plt.plot(x, psi[i].real)
-            
-            plt.subplot(1,2,2)
-            plt.title("Imaginary part")
-            plt.xlabel("x")
-            plt.ylabel("Im(Psi)")
-            plt.grid(True)
-            plt.plot(x, psi[i].imag)
-            '''
-            
         plt.tight_layout()
         plt.savefig("ground_state.pdf")
-        plt.show()
+        plt.close()
+        #plt.show()
         
         
         

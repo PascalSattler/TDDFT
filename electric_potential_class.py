@@ -43,6 +43,7 @@ class ScalarPotential:
                 return self.Phi_value
         else:
             self.Phi = lambdify(coords, Phi, modules = ['numpy'])
+            Phi_t = sympify(Phi_t)
             Phi_t = Phi_t.subs(params)
             for symbol in Phi_t.free_symbols:
                 if str(symbol) == 't':
@@ -106,7 +107,7 @@ class VectorPotential:
         pass
     
 
-    
+'''    
 #VectorPotential('[x, y, z]', '[t, 1, t/2]', transformation = 'spherical') #lambda rho, phi, z : (rho * cos(phi), rho * sin(phi), z))
 xs = np.linspace(0, np.pi)
 ys = np.linspace(0, 0, 1)
@@ -119,4 +120,4 @@ phi = ScalarPotential(['x', 'y', 'z'], (xx, yy, zz), "sin(x)**2*t")
 
 import matplotlib.pyplot as plt
 plt.plot(phi.call(0.1))
-
+'''

@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as anim
 #from periodic_pulay_class import periodic_pulay
 from wave_function_class import WaveFunction
+from electric_potential_class import ScalarPotential
 
 def SoftCoulomb(x, x0):
     return 1/np.sqrt(1+(x - x0)**2)
@@ -60,10 +61,13 @@ class Hamiltonian:
             self.T = - (0.5 / self.h**2) * diags([1, -2, 1], [-1, 0, 1], shape=(self.n, self.n))
         else:
             self.T = - (0.5 / self.h**2) * diags([1,1, -2, 1,1], [1-self.n,-1, 0, 1,self.n-1], shape=(self.n, self.n))
-    
+            
     def create_ex_potential(self, func):
         self.V_ex = func(self.x)
         
+    def couple_scal_pot(self, func_string, Phi_t = None, params = {}):
+        self.V_phi = ScalarPotential(['x', 'y', 'z'], (self.x, np.zeros_like(self.x), np.zeros_like(self.x)), func_string, Phi_t = Phi_t, params = params)
+
     def solve(self, num_eig=None):
         if self.Psi is None:
             self.H = self.T + diags(self.V_ex)
@@ -181,19 +185,21 @@ class TimePropagation:
         
     def _get_H_time_t(self, t):
         self.H_R = self.hamiltonian.T
+        self.H_I = csr_matrix((self.size, self.size), dtype = np.float64)
+        self.V_phi = - self.hamiltonian.V_phi.call(t)
+        
         self.V_ex = self.hamiltonian.V_ex
         self.V_xc = self.hamiltonian.correlation_pot(0)
         self.V_H = self.hamiltonian.hartree_pot()
-        self.H_I = csr_matrix((self.size, self.size), dtype = np.float64)
-    
+
     def psi_dt(self, t, psi):
         out = np.empty_like(psi)
         self._get_H_time_t(t)
         for i in range(self.psi_start.n_elec):
             psi_R = psi[2*i*self.size:(2*i+1)*self.size]
             psi_I = psi[(2*i+1)*self.size:(2*i+2)*self.size]
-            out[2*i*self.size:(2*i+1)*self.size] =   self.H_R.dot(psi_I) + (self.V_ex + self.V_xc + self.V_H) * psi_I + self.H_I.dot(psi_R)
-            out[(2*i+1)*self.size:(2*i+2)*self.size] = - self.H_R.dot(psi_R) - (self.V_ex + self.V_xc + self.V_H) * psi_R + self.H_I.dot(psi_I)
+            out[2*i*self.size:(2*i+1)*self.size] =   self.H_R.dot(psi_I) + (self.V_ex + self.V_xc + self.V_H + self.V_phi) * psi_I + self.H_I.dot(psi_R) #(self.V_ex + self.V_xc + self.V_H + self.V_phi)
+            out[(2*i+1)*self.size:(2*i+2)*self.size] = - self.H_R.dot(psi_R) - (self.V_ex + self.V_xc + self.V_H + self.V_phi) * psi_R + self.H_I.dot(psi_I)
         return out
     
     def time_prop(self, times):
@@ -230,8 +236,9 @@ class TimePropagation:
         xrange = self.hamiltonian.x
         ax.set_ylim(0, 1.1 * np.max(self.rho_list))
         self.line, = ax.plot(xrange, self.rho_list[0])
-        animation = anim.FuncAnimation(fig, self._animate, interval = 20, blit = True, save_count = 50)
-        animation.save("prob_density.gif", fps = 25)
+        animation = anim.FuncAnimation(fig, self._animate, interval = 20, frames = self.rho_list.shape[0],
+                                            blit = True, save_count = 50)
+        animation.save("prob_density.gif", fps = 15)
         plt.show()
         
     def plot_dip(self):
@@ -240,10 +247,13 @@ class TimePropagation:
         plt.grid(True)
         plt.plot(self.times, self.dip_list.real/self.hamiltonian.n_elec, label = "Re(dip)")
         plt.plot(self.times, self.dip_list.imag/self.hamiltonian.n_elec, label = "Im(dip)")
-        plt.legend("lower right")
-        plt.savefig("ground_state.pdf")
-        plt.show()
-    
+        plt.legend("best")
+        plt.savefig("dipole_moment.pdf")
+        plt.close
+        #plt.show()
+
+
+
 class dipole:
     
     def __init__(self, x, fix = True):
