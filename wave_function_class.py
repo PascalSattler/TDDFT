@@ -70,14 +70,11 @@ class WaveFunction:
         ax['bottom'].grid(True)
         
         for i in range(self.n_elec):
-            ax['left'].plot(x, psi[i].real)
-            ax['right'].plot(x, psi[i].imag)
+            ax['left'].plot(x, f_occ[i] * psi[i].real)
+            ax['right'].plot(x, f_occ[i] * psi[i].imag)
             ax['bottom'].plot(x, rho)
             
         plt.tight_layout()
         plt.savefig("ground_state.pdf")
         plt.close()
         #plt.show()
-        
-        
-        

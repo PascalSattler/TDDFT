@@ -6,7 +6,7 @@ Created on Wed Aug 17 14:25:59 2022
 """
 
 import numpy as np
-from sympy import symbols, sympify, lambdify, exp, sin, cos, log, Pow, pprint, diff, zeros, simplify, Array, Matrix
+from sympy import symbols, sympify, lambdify, exp, sin, cos, log, Pow, pprint, diff, zeros, simplify, Array, Matrix, Piecewise
 from sympy.vector import CoordSys3D, express
 from sympy.vector import divergence as div
 

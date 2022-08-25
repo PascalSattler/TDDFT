@@ -9,7 +9,7 @@ import numpy as np
 from scipy import linalg as lin
 from scipy.sparse import diags, csr_matrix
 from scipy.sparse.linalg import eigsh
-from scipy.ndimage import convolve as conv
+from scipy.ndimage import convolve1d as conv
 from scipy.optimize import root
 from scipy.integrate import ode, trapezoid
 from scipy.interpolate import interp1d
@@ -18,6 +18,7 @@ import matplotlib.animation as anim
 #from periodic_pulay_class import periodic_pulay
 from wave_function_class import WaveFunction
 from electric_potential_class import ScalarPotential
+from tools import correlation_pot, callback
 
 def SoftCoulomb(x, x0):
     return 1/np.sqrt(1+(x - x0)**2)
@@ -29,6 +30,7 @@ def extrapolate(val, xrange, yrange):
 class Hamiltonian:
     
     Psi = None
+    root_method = 'anderson'
     
     def __init__(self, n, n_elec, xrange, temp = 0, fix=True):
         self.n = n
@@ -48,13 +50,19 @@ class Hamiltonian:
             self.x = np.linspace(self.xmin, self.xmax, self.n, endpoint = False)
             
         if temp == 0:
-            self.f_occ = np.ones(n_elec)
+            if n_elec % 2 == 0:
+                self.f_occ = 2 * np.ones(n_elec // 2)
+            else:
+                self.f_occ = 2 * np.ones(n_elec // 2)
+                self.f_occ = np.append(self.f_occ, 1e-10)
         else:
             raise NotImplementedError("noch nicht fertig für endliche Temp")
             
         self._create_kinetic()
         
         self.sc_range = np.arange(-n, n+ 1) * self.h
+        self.kernel = SoftCoulomb(self.sc_range, 0)
+        self.corr_pot = np.empty(self.n)
     
     def _create_kinetic(self):
         if self.fix:
@@ -75,12 +83,13 @@ class Hamiltonian:
             self.H = self.T + diags(self.V_ex + self.correlation_pot(0) + self.hartree_pot())
             
         if num_eig is None:
-            self.E, self.Psi = eigsh(self.H, which = 'SA', k = self.n_elec)
+            self.E, self.Psi = eigsh(self.H, which = 'SA', k = len(self.f_occ), ncv = max(4*self.n_elec + 1, 40))
         else:
             self.E, self.Psi = eigsh(self.H, which = 'SA', k = num_eig)
             
         self.Psi = WaveFunction(self.Psi/np.sqrt(self.h))
         self.prob_density = self.get_probability(self.Psi.to_array())
+        self.dummy = np.zeros_like(self.prob_density)
         
     def plot(self):
         print(self.E)
@@ -97,73 +106,32 @@ class Hamiltonian:
     
     def probability(self, psi):
         rho = np.zeros(self.n)
-        for i in range(self.n_elec):
-            rho += self.f_occ[i] * (psi[2*i*self.n:(2*i+1)*self.n]**2 + psi[(2*i+1)*self.n:(2*i+2)*self.n]**2)
+        for i in range(len(self.f_occ)):
+            rho += self.f_occ[i] * (psi[2*i*self.n:(2*i+1)*self.n]**2 \
+                                    + psi[(2*i+1)*self.n:(2*i+2)*self.n]**2)
         return rho
+        #return probability(self.n, self.n_elec, self.f_occ, psi, self.dummy)
         
     def plot_prob(self):
         plt.plot(self.x, self.prob_density)
     
-    def _get_wigner_seitz(self):
-        self.r_s = np.abs(1/(2 * self.prob_density))
-        
+    #def _get_wigner_seitz(self):
+    #    self.r_s = np.abs(1/(2 * self.prob_density))
+    
     def correlation_pot(self, pol):
-        if pol == 0:
-            A = 18.4029
-            B = 0.0
-            C = 7.50139
-            D = 0.101855
-            E = 0.01282710
-            alpha = 1.51124
-            beta = 0.2586
-            exponent = 4.42425
-        elif pol == 1:
-            A = 5.2479
-            B = 0.0
-            C = 1.56823
-            D = 0.1286150
-            E = 0.0032074
-            alpha = 0.053882
-            beta = 1.56E-5
-            exponent = 2.95899
-        else:
-            raise ValueError("Polarization must be 0 or 1!")
-        
-        self._get_wigner_seitz()
-        
-        fraction = (self.r_s + E*self.r_s**2)/(A + B*self.r_s + C*self.r_s**2 + D*self.r_s**3)
-        logarithm = np.log(1 + alpha*self.r_s + beta*self.r_s**exponent)
-        self.e_corr = -0.5 * fraction * logarithm
-        
-        fraction_derivative = (A + 2*A*E*self.r_s + (B*E-C)*self.r_s**2 - 2*D*self.r_s**3 - D*E*self.r_s**4 )/(A + B*self.r_s + C*self.r_s**2 + D*self.r_s**3)**2
-        logarithm_derivative = (alpha + exponent*beta*self.r_s**(exponent-1))/(1 + alpha*self.r_s + beta*self.r_s**exponent)
-        e_corr_derivative = self.r_s**2 * (fraction_derivative * logarithm + fraction * logarithm_derivative)
-        
-        return self.e_corr + self.prob_density * e_corr_derivative
+        return correlation_pot(pol, self.n, self.prob_density, self.corr_pot)
     
     def hartree_pot(self):
         if self.fix:
-            return self.h * conv(self.prob_density, SoftCoulomb(self.sc_range, 0), mode = 'constant', cval = 0)
+            return self.h * conv(self.prob_density, self.kernel, mode = 'constant', cval = 0)
         else:
-            return self.h * conv(self.prob_density, SoftCoulomb(self.sc_range, 0), mode = 'wrap')
-    ''' 
-    def solve_sc(self):
-        self.solve()
-        n_diff = 1
-        SC_scheme = periodic_pulay(len(self.prob_density))
-        while n_diff > 1e-4:
-            n_old = self.prob_density.copy()
-            self.solve()
-            f = self.prob_density - n_old 
-            n_diff = lin.norm(f)
-            self.prob_density = SC_scheme(n_old, f)
-            print(n_diff)
-    '''
+            return self.h * conv(self.prob_density, self.kernel, mode = 'wrap')
     
     def solve_sc(self):
         if self.Psi is None:
             self.solve()
-        N_it = root(self.iteration, self.prob_density, method = 'anderson', tol = 1e-6).nit
+        N_it = root(self.iteration, self.prob_density, method = self.root_method,
+                    tol = 1e-10, callback = callback, options = {'line_search' : 'wolfe'}).nit
         print("{} iterations were performed for convergence.".format(N_it))
 
     def iteration(self, rho):
@@ -175,37 +143,48 @@ class Hamiltonian:
 
 class TimePropagation:
 
-    def __init__(self, hamiltonian: Hamiltonian , psi_start: np.ndarray):
+    def __init__(self, hamiltonian: Hamiltonian , psi_start: np.ndarray, t_cutoff : float = 1e16):
         self.hamiltonian = hamiltonian
         self.psi_start = psi_start
+        self.t_cutoff = t_cutoff
         self.size = self.hamiltonian.n
+        self.H_R = self.hamiltonian.T
+        self.H_I = csr_matrix((self.size, self.size), dtype = np.float64)
         
     def _separateReImVec(self, vec):
         return np.concatenate((vec.real, vec.imag))
         
     def _get_H_time_t(self, t):
-        self.H_R = self.hamiltonian.T
-        self.H_I = csr_matrix((self.size, self.size), dtype = np.float64)
+        '''
         self.V_phi = - self.hamiltonian.V_phi.call(t)
         
         self.V_ex = self.hamiltonian.V_ex
         self.V_xc = self.hamiltonian.correlation_pot(0)
         self.V_H = self.hamiltonian.hartree_pot()
+        '''
+        if t < self.t_cutoff:
+            return self.hamiltonian.V_ex \
+                    + self.hamiltonian.correlation_pot(0) \
+                    + self.hamiltonian.hartree_pot() - self.hamiltonian.V_phi.call(t)
+        else:
+            return self.hamiltonian.V_ex \
+                    + self.hamiltonian.correlation_pot(0) \
+                    + self.hamiltonian.hartree_pot()
 
     def psi_dt(self, t, psi):
         out = np.empty_like(psi)
-        self._get_H_time_t(t)
+        V_pot = self._get_H_time_t(t)
         for i in range(self.psi_start.n_elec):
             psi_R = psi[2*i*self.size:(2*i+1)*self.size]
             psi_I = psi[(2*i+1)*self.size:(2*i+2)*self.size]
-            out[2*i*self.size:(2*i+1)*self.size] =   self.H_R.dot(psi_I) + (self.V_ex + self.V_xc + self.V_H + self.V_phi) * psi_I + self.H_I.dot(psi_R) #(self.V_ex + self.V_xc + self.V_H + self.V_phi)
-            out[(2*i+1)*self.size:(2*i+2)*self.size] = - self.H_R.dot(psi_R) - (self.V_ex + self.V_xc + self.V_H + self.V_phi) * psi_R + self.H_I.dot(psi_I)
+            out[2*i*self.size:(2*i+1)*self.size] =   self.H_R.dot(psi_I) + V_pot * psi_I + self.H_I.dot(psi_R) #(self.V_ex + self.V_xc + self.V_H + self.V_phi)
+            out[(2*i+1)*self.size:(2*i+2)*self.size] = - self.H_R.dot(psi_R) - V_pot * psi_R + self.H_I.dot(psi_I)
         return out
     
     def time_prop(self, times):
         self.times = times
         #print(1/(self.hamiltonian.E[-1] - self.hamiltonian.E[0]))
-        prop = ode(self.psi_dt).set_integrator('dop853')#, first_step = 0.1)
+        prop = ode(self.psi_dt).set_integrator('dop853', rtol = 1e-6, atol = 1e-6, nsteps = 1e12)#, first_step = 0.1)
         prop.set_initial_value(self.psi_start.psi.copy(), self.times[0])
         it = 1
         
@@ -215,17 +194,38 @@ class TimePropagation:
         
         self.dip_list = np.empty(len(self.times), dtype = np.complex128)
         self.dip_list[0] = dip.call(self.rho_list[0])
-        
+
+        file = open('dipole_values.txt', mode = 'w')
+        file.write('time \t dipole_real \t dipole_imag \n')
+        #import cProfile
+        #from pstats import SortKey
+        #import pstats
+        #import io
+
         while prop.successful() and prop.t < self.times[-1]:
+            #pr = cProfile.Profile()
+            #pr.enable()
             prop.integrate(self.times[it])
+            #pr.disable()
+            #s = io.StringIO()
+            #sortby = SortKey.CUMULATIVE
+            #ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+            #ps.print_stats()
+            #print(s.getvalue())
+            #exit()
             self.rho_list[it] = self.hamiltonian.probability(prop.y)
             #psi_t = prop.y[:self.size] + 1j * prop.y[self.size:]
             
             self.dip_list[it] = dip.call(self.rho_list[it])
             print(prop.t, self.dip_list[it])
             
+            to_write_in_file = str(prop.t) + '\t' + str(self.dip_list[it].real) + '\t' + str(self.dip_list[it].imag) + '\n'
+            file.write(to_write_in_file)
+
             #self.rho_extrap = extrapolate(self.times[it+1], self.times[:it], self.rho_list[:it])
             it += 1
+        
+        file.close()
     
     def _animate(self, i):
         self.line.set_ydata(self.rho_list[i])
@@ -238,7 +238,7 @@ class TimePropagation:
         self.line, = ax.plot(xrange, self.rho_list[0])
         animation = anim.FuncAnimation(fig, self._animate, interval = 20, frames = self.rho_list.shape[0],
                                             blit = True, save_count = 50)
-        animation.save("prob_density.gif", fps = 15)
+        animation.save("prob_density.gif", fps = 60)
         plt.show()
         
     def plot_dip(self):
@@ -249,7 +249,18 @@ class TimePropagation:
         plt.plot(self.times, self.dip_list.imag/self.hamiltonian.n_elec, label = "Im(dip)")
         plt.legend("best")
         plt.savefig("dipole_moment.pdf")
-        plt.close
+        plt.close()
+        #plt.show()
+
+    def plot_dip_accel(self, freq, excit_freq):
+        accel = dipole.accel(self.dip_list, freq)
+        plt.title("FT of dipole moment acceleration")
+        plt.xlabel("w/w_excitation")
+        plt.grid(True)
+        plt.plot(freq/excit_freq, accel.real)
+        plt.legend("best")
+        plt.savefig("dipole_moment_accel_fft.pdf")
+        plt.close()
         #plt.show()
 
 
@@ -275,12 +286,4 @@ class dipole:
     def dip_nfix(self, rho):
         integrand = np.concatenate((rho, [rho[0]])) * np.exp(2j*np.pi*self.x/self.L)
         return trapezoid(integrand, self.x)
-    
-    
-        
-        
-    
-        
-    
-        
 
