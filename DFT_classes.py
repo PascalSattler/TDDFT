@@ -52,9 +52,12 @@ class Hamiltonian:
         if temp == 0:
             if n_elec % 2 == 0:
                 self.f_occ = 2 * np.ones(n_elec // 2)
-            else:
-                self.f_occ = 2 * np.ones(n_elec // 2)
                 self.f_occ = np.append(self.f_occ, 1e-10)
+            else:
+                #self.f_occ = 2 * np.ones(n_elec // 2)
+                #self.f_occ = np.append(self.f_occ, 1e-10)
+                self.f_occ = 2 * np.ones(n_elec // 2)
+                self.f_occ = np.append(self.f_occ, 1)
         else:
             raise NotImplementedError("noch nicht fertig für endliche Temp")
             
@@ -143,7 +146,7 @@ class Hamiltonian:
 
 class TimePropagation:
 
-    def __init__(self, hamiltonian: Hamiltonian , psi_start: np.ndarray, t_cutoff : float = 1e16):
+    def __init__(self, hamiltonian: Hamiltonian , psi_start: WaveFunction, t_cutoff : float = 1e16):
         self.hamiltonian = hamiltonian
         self.psi_start = psi_start
         self.t_cutoff = t_cutoff
@@ -181,14 +184,22 @@ class TimePropagation:
             out[(2*i+1)*self.size:(2*i+2)*self.size] = - self.H_R.dot(psi_R) - V_pot * psi_R + self.H_I.dot(psi_I)
         return out
     
+    def _to_array(self, psi):
+        psi_array = np.reshape(psi, (len(self.hamiltonian.f_occ), 2, self.size))
+        return (psi_array[:,0] + 1j * psi_array[:,1])
+
     def time_prop(self, times):
         self.times = times
         #print(1/(self.hamiltonian.E[-1] - self.hamiltonian.E[0]))
-        prop = ode(self.psi_dt).set_integrator('dop853', rtol = 1e-6, atol = 1e-6, nsteps = 1e12)#, first_step = 0.1)
+        prop = ode(self.psi_dt).set_integrator('dop853', rtol = 1e-6, atol = 1e-6, nsteps = 1e8)#, first_step = 0.1)
         prop.set_initial_value(self.psi_start.psi.copy(), self.times[0])
         it = 1
         
         dip = dipole(self.hamiltonian.x, self.hamiltonian.fix)
+
+        psi_list = np.empty((len(self.times), len(self.hamiltonian.f_occ), self.size), dtype = np.complex128)
+        psi_list[0] = self.psi_start.to_array()
+
         self.rho_list = np.empty((len(self.times), self.size), dtype = np.float64)
         self.rho_list[0] = self.psi_start.probability(self.hamiltonian.f_occ)
         
@@ -213,6 +224,8 @@ class TimePropagation:
             #ps.print_stats()
             #print(s.getvalue())
             #exit()
+
+            psi_list[it] = self._to_array(prop.y)
             self.rho_list[it] = self.hamiltonian.probability(prop.y)
             #psi_t = prop.y[:self.size] + 1j * prop.y[self.size:]
             
@@ -225,6 +238,7 @@ class TimePropagation:
             #self.rho_extrap = extrapolate(self.times[it+1], self.times[:it], self.rho_list[:it])
             it += 1
         
+        np.save('psi_list.npy', psi_list)
         file.close()
     
     def _animate(self, i):
