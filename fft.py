@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 #from wave_function_class import WaveFunction
 from scipy.fft import fftfreq, fft
 
-omega = 0.02
+omega = 0.04
 n_opt = 4
 pulse_time = (2*np.pi/omega)*n_opt
 
@@ -26,7 +26,7 @@ dt = times[1] - times[0]
 
 accel = np.diff(dip_list, n = 2, prepend = dip_list[0])/dt**2
 
-freqs = fftfreq(len(accel), d = dt)#/base_freq
+freqs = 2* np.pi * fftfreq(len(accel), d = dt)#/base_freq
 accel_fft = fft(accel)
 
 sorted_ind = np.argsort(freqs)
@@ -34,9 +34,9 @@ freqs = freqs[sorted_ind]
 accel_fft = accel_fft[sorted_ind]
 
 plt.title("FT of dipole moment acceleration")
-plt.xlabel("w/w_excitation")
+plt.xlabel("w")
 plt.grid(True)
-plt.xlim(0, 1)#np.max(freqs))
+plt.xlim(0, 3)#np.max(freqs))
 plt.plot(freqs, np.log(np.abs(accel_fft)**2))
 #plt.legend("best")
 plt.savefig("dipole_moment_accel_fft.png")

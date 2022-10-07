@@ -83,16 +83,16 @@ class Hamiltonian:
         if self.Psi is None:
             self.H = self.T + diags(self.V_ex)
         else:
-            self.H = self.T + diags(self.V_ex + self.correlation_pot(0) + self.hartree_pot())
+            self.H = self.T + diags(self.V_ex + self.correlation_pot(0) + self.hartree_pot() / 2)
             
         if num_eig is None:
             self.E, self.Psi = eigsh(self.H, which = 'SA', k = len(self.f_occ), ncv = max(4*self.n_elec + 1, 40))
         else:
             self.E, self.Psi = eigsh(self.H, which = 'SA', k = num_eig)
-            
+                
         self.Psi = WaveFunction(self.Psi/np.sqrt(self.h))
         self.prob_density = self.get_probability(self.Psi.to_array())
-        self.dummy = np.zeros_like(self.prob_density)
+        #self.dummy = np.zeros_like(self.prob_density)
         
     def plot(self):
         print(self.E)
@@ -114,9 +114,6 @@ class Hamiltonian:
                                     + psi[(2*i+1)*self.n:(2*i+2)*self.n]**2)
         return rho
         #return probability(self.n, self.n_elec, self.f_occ, psi, self.dummy)
-        
-    def plot_prob(self):
-        plt.plot(self.x, self.prob_density)
     
     #def _get_wigner_seitz(self):
     #    self.r_s = np.abs(1/(2 * self.prob_density))
@@ -134,7 +131,7 @@ class Hamiltonian:
         if self.Psi is None:
             self.solve()
         N_it = root(self.iteration, self.prob_density, method = self.root_method,
-                    tol = 1e-10, callback = callback, options = {'line_search' : 'wolfe'}).nit
+                    tol = 1e-7, callback = callback, options = {'line_search' : 'wolfe'}).nit
         print("{} iterations were performed for convergence.".format(N_it))
 
     def iteration(self, rho):
@@ -168,11 +165,11 @@ class TimePropagation:
         if t < self.t_cutoff:
             return self.hamiltonian.V_ex \
                     + self.hamiltonian.correlation_pot(0) \
-                    + self.hamiltonian.hartree_pot() - self.hamiltonian.V_phi.call(t)
+                    + self.hamiltonian.hartree_pot()/2 - self.hamiltonian.V_phi.call(t)
         else:
             return self.hamiltonian.V_ex \
                     + self.hamiltonian.correlation_pot(0) \
-                    + self.hamiltonian.hartree_pot()
+                    + self.hamiltonian.hartree_pot()/2
 
     def psi_dt(self, t, psi):
         out = np.empty_like(psi)
@@ -238,8 +235,9 @@ class TimePropagation:
             #self.rho_extrap = extrapolate(self.times[it+1], self.times[:it], self.rho_list[:it])
             it += 1
         
-        np.save('psi_list.npy', psi_list)
+    
         file.close()
+        return psi_list
     
     def _animate(self, i):
         self.line.set_ydata(self.rho_list[i])
