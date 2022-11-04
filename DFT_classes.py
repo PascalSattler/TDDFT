@@ -52,7 +52,8 @@ class Hamiltonian:
         if temp == 0:
             if n_elec % 2 == 0:
                 self.f_occ = 2 * np.ones(n_elec // 2)
-                self.f_occ = np.append(self.f_occ, 1e-10)
+                #for i in range(6):
+                #    self.f_occ = np.append(self.f_occ, 1e-10)
             else:
                 #self.f_occ = 2 * np.ones(n_elec // 2)
                 #self.f_occ = np.append(self.f_occ, 1e-10)
@@ -77,7 +78,16 @@ class Hamiltonian:
         self.V_ex = func(self.x)
         
     def couple_scal_pot(self, func_string, Phi_t = None, params = {}):
-        self.V_phi = ScalarPotential(['x', 'y', 'z'], (self.x, np.zeros_like(self.x), np.zeros_like(self.x)), func_string, Phi_t = Phi_t, params = params)
+        if self.fix == True:
+            self.V_phi = ScalarPotential(['x', 'y', 'z'],
+             (self.x, np.zeros_like(self.x), np.zeros_like(self.x)),
+             func_string, Phi_t = Phi_t, params = params)
+        elif self.fix == False:
+            radius = (self.xmax - self.xmin)/(2*np.pi)
+            angles = self.x/radius
+            self.V_phi = ScalarPotential(['x', 'y', 'z'], 
+             (radius * np.cos(angles), np.zeros_like(angles), np.zeros_like(angles)),
+             func_string, Phi_t = Phi_t, params = params)
 
     def solve(self, num_eig=None):
         if self.Psi is None:

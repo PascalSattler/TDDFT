@@ -9,6 +9,8 @@ import numpy as np
 from sympy import symbols, sympify, lambdify, exp, sin, cos, log, Pow, pprint, diff, zeros, simplify, Array, Matrix, Piecewise
 from sympy.vector import CoordSys3D, express
 from sympy.vector import divergence as div
+from sympy.abc import t
+from sympy import Heaviside
 
 
 
